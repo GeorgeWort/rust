@@ -909,6 +909,7 @@ pub enum ReprAttr {
     ReprSimd,
     ReprTransparent,
     ReprAlign(u32),
+    ReprScalable(u32),
 }
 
 #[derive(Eq, PartialEq, Debug, Copy, Clone)]
@@ -964,6 +965,13 @@ pub fn parse_repr_attr(sess: &Session, attr: &Attribute) -> Vec<ReprAttr> {
                         recognised = true;
                         None
                     }
+                    sym::scalable => {
+                        sess.emit_err(session_diagnostics::ScalableAttrMissingN {
+                            span: item.span(),
+                        });
+                        recognised = true;
+                        None
+                    }
                     name => int_type_of_word(name).map(ReprInt),
                 };
 
@@ -985,6 +993,12 @@ pub fn parse_repr_attr(sess: &Session, attr: &Attribute) -> Vec<ReprAttr> {
                         Ok(literal) => acc.push(ReprPacked(literal)),
                         Err(message) => literal_error = Some(message),
                     };
+                } else if name == sym::scalable {
+                    recognised = true;
+                    match parse_scalable(&value.kind) {
+                        Ok(literal) => acc.push(ReprScalable(literal)),
+                        Err(message) => literal_error = Some(message),
+                    };
                 } else if matches!(name, sym::C | sym::simd | sym::transparent)
                     || int_type_of_word(name).is_some()
                 {
@@ -1004,7 +1018,10 @@ pub fn parse_repr_attr(sess: &Session, attr: &Attribute) -> Vec<ReprAttr> {
             } else if let Some(meta_item) = item.meta_item() {
                 match &meta_item.kind {
                     MetaItemKind::NameValue(value) => {
-                        if meta_item.has_name(sym::align) || meta_item.has_name(sym::packed) {
+                        if meta_item.has_name(sym::align)
+                            || meta_item.has_name(sym::packed)
+                            || meta_item.has_name(sym::scalable)
+                        {
                             let name = meta_item.name_or_empty().to_ident_string();
                             recognised = true;
                             sess.emit_err(session_diagnostics::IncorrectReprFormatGeneric {
@@ -1198,4 +1215,12 @@ pub fn parse_confusables(attr: &Attribute) -> Option<Vec<Symbol>> {
     }
 
     return Some(candidates);
+}
+
+pub fn parse_scalable(node: &ast::LitKind) -> Result<u32, &'static str> {
+    if let ast::LitKind::Int(literal, ast::LitIntType::Unsuffixed) = node {
+        (*literal).try_into().map_err(|_| "integer too large")
+    } else {
+        Err("not an unsuffixed integer")
+    }
 }

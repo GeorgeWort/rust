@@ -182,6 +182,7 @@ pub enum RegKind {
     Integer,
     Float,
     Vector,
+    ScalableVector,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, HashStable_Generic)]
@@ -228,6 +229,7 @@ impl Reg {
                 _ => panic!("unsupported float: {self:?}"),
             },
             RegKind::Vector => dl.vector_align(self.size).abi,
+            RegKind::ScalableVector => dl.vector_align(self.size).abi,
         }
     }
 }
@@ -384,7 +386,9 @@ impl HomogeneousAggregate {
 impl<'a, Ty> TyAndLayout<'a, Ty> {
     fn is_aggregate(&self) -> bool {
         match self.abi {
-            Abi::Uninhabited | Abi::Scalar(_) | Abi::Vector { .. } => false,
+            Abi::Uninhabited | Abi::Scalar(_) | Abi::Vector { .. } | Abi::ScalableVector { .. } => {
+                false
+            }
             Abi::ScalarPair(..) | Abi::Aggregate { .. } => true,
         }
     }
@@ -421,6 +425,11 @@ impl<'a, Ty> TyAndLayout<'a, Ty> {
                     size: self.size,
                 }))
             }
+
+            Abi::ScalableVector { .. } => Ok(HomogeneousAggregate::Homogeneous(Reg {
+                kind: RegKind::ScalableVector,
+                size: Size::from_bits(128),
+            })),
 
             Abi::ScalarPair(..) | Abi::Aggregate { sized: true } => {
                 // Helper for computing `homogeneous_aggregate`, allowing a custom
@@ -557,6 +566,7 @@ impl<'a, Ty> ArgAbi<'a, Ty> {
             ),
             Abi::Vector { .. } => PassMode::Direct(ArgAttributes::new()),
             Abi::Aggregate { .. } => Self::indirect_pass_mode(&layout),
+            Abi::ScalableVector { .. } => PassMode::Direct(ArgAttributes::new()),
         };
         ArgAbi { layout, mode }
     }

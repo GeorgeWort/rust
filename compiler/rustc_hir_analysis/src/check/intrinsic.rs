@@ -525,6 +525,7 @@ pub fn check_platform_intrinsic_type(tcx: TyCtxt<'_>, it: &hir::ForeignItem<'_>)
         sym::simd_insert => (2, 0, vec![param(0), tcx.types.u32, param(1)], param(0)),
         sym::simd_extract => (2, 0, vec![param(0), tcx.types.u32], param(1)),
         sym::simd_cast
+        | sym::simd_reinterpret
         | sym::simd_as
         | sym::simd_cast_ptr
         | sym::simd_expose_addr

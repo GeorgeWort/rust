@@ -583,7 +583,12 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 infer::BoundRegionConversionTime::FnCall,
                 fn_sig.output(),
             );
-            self.require_type_is_sized_deferred(output, expr.span, traits::SizedReturnType);
+            if !output.is_scalable_simd() {
+                // Unsized locals and fn params have a feature gate to allow them. Return types don't
+                // with scalable vectors we need to be able to return unsized types, for now just
+                // remove the check for testing purposes.
+                self.require_type_is_sized_deferred(output, expr.span, traits::SizedReturnType);
+            }
         }
 
         // We always require that the type provided as the value for

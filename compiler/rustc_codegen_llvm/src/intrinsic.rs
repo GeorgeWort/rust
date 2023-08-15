@@ -302,6 +302,14 @@ impl<'ll, 'tcx> IntrinsicCallMethods<'tcx> for Builder<'_, 'll, 'tcx> {
                 let use_integer_compare = match layout.abi() {
                     Scalar(_) | ScalarPair(_, _) => true,
                     Uninhabited | Vector { .. } => false,
+                    ScalableVector { .. } => {
+                        tcx.sess.emit_err(InvalidMonomorphization::NonScalableType {
+                            span,
+                            name: sym::raw_eq,
+                            ty: tp_ty,
+                        });
+                        return;
+                    }
                     Aggregate { .. } => {
                         // For rusty ABIs, small aggregates are actually passed
                         // as `RegKind::Integer` (see `FnAbi::adjust_for_abi`),
@@ -983,6 +991,19 @@ fn generic_simd_intrinsic<'ll, 'tcx>(
         return Ok(bx.select(m_i1s, args[1].immediate(), args[2].immediate()));
     }
 
+    if name == sym::simd_reinterpret {
+        require_simd!(ret_ty, SimdReturn);
+
+        use rustc_codegen_ssa::mir::operand::OperandValue;
+        return Ok(match args[0].val {
+            OperandValue::Ref(val, _, _) | OperandValue::Immediate(val) => {
+                bx.bitcast(val, llret_ty)
+            }
+            OperandValue::ZeroSized => bx.const_undef(llret_ty),
+            OperandValue::Pair(_, _) => todo!(),
+        });
+    }
+
     // every intrinsic below takes a SIMD vector as its first argument
     let (in_len, in_elem) = require_simd!(arg_tys[0], SimdInput);
     let in_ty = arg_tys[0];
@@ -1176,12 +1197,16 @@ fn generic_simd_intrinsic<'ll, 'tcx>(
             InvalidMonomorphization::MismatchedLengths { span, name, m_len, v_len }
         );
         match m_elem_ty.kind() {
-            ty::Int(_) => {}
+            ty::Int(_) | ty::Bool => {}
             _ => return_error!(InvalidMonomorphization::MaskType { span, name, ty: m_elem_ty }),
         }
         // truncate the mask to a vector of i1s
         let i1 = bx.type_i1();
-        let i1xn = bx.type_vector(i1, m_len as u64);
+        let i1xn = if arg_tys[1].is_scalable_simd() {
+            bx.type_scalable_vector(i1, m_len as u64)
+        } else {
+            bx.type_vector(i1, m_len as u64)
+        };
         let m_i1s = bx.trunc(args[0].immediate(), i1xn);
         return Ok(bx.select(m_i1s, args[1].immediate(), args[2].immediate()));
     }
@@ -1952,6 +1977,7 @@ fn generic_simd_intrinsic<'ll, 'tcx>(
             out_elem
         });
     }
+
     macro_rules! arith_binary {
         ($($name: ident: $($($p: ident),* => $call: ident),*;)*) => {
             $(if name == sym::$name {

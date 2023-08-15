@@ -406,6 +406,10 @@ fn layout_of_uncached<'tcx>(
                 };
 
                 (*e_ty, *count, true)
+            } else if let ty::Slice(e_ty) = f0_ty.kind()
+                && def.repr().scalable()
+            {
+                (*e_ty, 1, false)
             } else {
                 // First ADT field is not an array:
                 (f0_ty, def.non_enum_variant().fields.len() as _, false)
@@ -445,10 +449,19 @@ fn layout_of_uncached<'tcx>(
                 FieldsShape::Array { stride: e_ly.size, count: e_len }
             };
 
+            let abi = if def.repr().scalable() {
+                if let Some(elt) = def.repr().scalable {
+                    Abi::ScalableVector { element: e_abi, elt: elt as u64 }
+                } else {
+                    bug!("scalable SIMD type `{}` doesn't contain the number of elements", ty,)
+                }
+            } else {
+                Abi::Vector { element: e_abi, count: e_len }
+            };
             tcx.mk_layout(LayoutS {
                 variants: Variants::Single { index: FIRST_VARIANT },
                 fields,
-                abi: Abi::Vector { element: e_abi, count: e_len },
+                abi,
                 largest_niche: e_ly.largest_niche,
                 size,
                 align,
@@ -478,6 +491,12 @@ fn layout_of_uncached<'tcx>(
                         "union cannot be packed and aligned",
                     );
                     return Err(error(cx, LayoutError::Unknown(ty)));
+                }
+
+                if def.repr().scalable()
+                    && variants[FIRST_VARIANT].iter().all(|field| !field.0.is_zst())
+                {
+                    bug!("Fields for a Scalable vector should be a ZST");
                 }
 
                 return Ok(tcx.mk_layout(

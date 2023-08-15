@@ -1852,6 +1852,9 @@ impl CheckAttrVisitor<'_> {
                         continue;
                     }
                 }
+                sym::scalable => {
+                    continue;
+                }
                 sym::transparent => {
                     is_transparent = true;
                     match target {
