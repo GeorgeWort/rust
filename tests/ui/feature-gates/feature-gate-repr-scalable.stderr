@@ -1,0 +1,11 @@
+error[E0658]: Scalable SIMD types are experimental and possibly buggy
+  --> $DIR/feature-gate-repr-scalable.rs:3:1
+   |
+LL | #[repr(simd, scalable(16))]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: add `#![feature(repr_scalable)]` to the crate attributes to enable
+
+error: aborting due to previous error
+
+For more information about this error, try `rustc --explain E0658`.
